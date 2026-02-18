@@ -22,101 +22,101 @@ const DEFAULT_VSCODE_VERSION: &str = "1.100.0";
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "first_officer=info".parse().unwrap()),
-        )
-        .init();
+	tracing_subscriber::fmt()
+		.with_env_filter(
+			tracing_subscriber::EnvFilter::try_from_default_env()
+				.unwrap_or_else(|_| "first_officer=info".parse().unwrap()),
+		)
+		.init();
 
-    let github_token = env::var("GH_TOKEN").ok();
-    if github_token.is_none() {
-        warn!("GH_TOKEN not set — requests must provide a GitHub token via headers");
-    }
+	let github_token = env::var("GH_TOKEN").ok();
+	if github_token.is_none() {
+		warn!("GH_TOKEN not set — requests must provide a GitHub token via headers");
+	}
 
-    let port: u16 = env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(4141);
-    let account_type = env::var("ACCOUNT_TYPE").unwrap_or_else(|_| "individual".to_string());
-    let vscode_version =
-        env::var("VSCODE_VERSION").unwrap_or_else(|_| DEFAULT_VSCODE_VERSION.to_string());
+	let port: u16 = env::var("PORT")
+		.ok()
+		.and_then(|p| p.parse().ok())
+		.unwrap_or(4141);
+	let account_type = env::var("ACCOUNT_TYPE").unwrap_or_else(|_| "individual".to_string());
+	let vscode_version =
+		env::var("VSCODE_VERSION").unwrap_or_else(|_| DEFAULT_VSCODE_VERSION.to_string());
 
-    let renamer = ModelRenamer::from_env();
-    let state = Arc::new(AppState::new(
-        github_token,
-        account_type,
-        vscode_version,
-        renamer,
-    ));
+	let renamer = ModelRenamer::from_env();
+	let state = Arc::new(AppState::new(
+		github_token,
+		account_type,
+		vscode_version,
+		renamer,
+	));
 
-    if state.default_github_token.is_some() {
-        if let Err(e) = initial_token_exchange(&state).await {
-            error!(error = %e, "failed to acquire initial copilot token");
-            std::process::exit(1);
-        }
+	if state.default_github_token.is_some() {
+		if let Err(e) = initial_token_exchange(&state).await {
+			error!(error = %e, "failed to acquire initial copilot token");
+			std::process::exit(1);
+		}
 
-        let copilot_token = state
-            .token_cache
-            .get_copilot_token(
-                state.default_github_token.as_deref().unwrap(),
-                &state.client,
-                &state.vscode_version,
-            )
-            .await;
+		let copilot_token = state
+			.token_cache
+			.get_copilot_token(
+				state.default_github_token.as_deref().unwrap(),
+				&state.client,
+				&state.vscode_version,
+			)
+			.await;
 
-        if let Ok(token) = copilot_token {
-            match fetch_models(
-                &state.client,
-                &token,
-                &state.account_type,
-                &state.vscode_version,
-            )
-            .await
-            {
-                Ok(mut models) => {
-                    for model in &mut models.data {
-                        let renamed = state.renamer.rename(&model.id);
-                        state.renamer.register(&model.id, &renamed);
-                        if renamed != model.id {
-                            info!(from = %model.id, to = %renamed, "renamed model");
-                            model.id = renamed;
-                        }
-                    }
-                    let names: Vec<&str> = models.data.iter().map(|m| m.id.as_str()).collect();
-                    info!(count = models.data.len(), models = ?names, "cached models");
-                    *state.models.write().await = Some(models);
-                }
-                Err(e) => {
-                    error!(error = %e, "failed to fetch models (continuing without cache)");
-                }
-            }
-        }
-    }
+		if let Ok(token) = copilot_token {
+			match fetch_models(
+				&state.client,
+				&token,
+				&state.account_type,
+				&state.vscode_version,
+			)
+			.await
+			{
+				Ok(mut models) => {
+					for model in &mut models.data {
+						let renamed = state.renamer.rename(&model.id);
+						state.renamer.register(&model.id, &renamed);
+						if renamed != model.id {
+							info!(from = %model.id, to = %renamed, "renamed model");
+							model.id = renamed;
+						}
+					}
+					let names: Vec<&str> = models.data.iter().map(|m| m.id.as_str()).collect();
+					info!(count = models.data.len(), models = ?names, "cached models");
+					*state.models.write().await = Some(models);
+				}
+				Err(e) => {
+					error!(error = %e, "failed to fetch models (continuing without cache)");
+				}
+			}
+		}
+	}
 
-    spawn_refresh_loop(Arc::clone(&state));
+	spawn_refresh_loop(Arc::clone(&state));
 
-    let app = Router::new()
-        .route("/", get(routes::health::health))
-        .route(
-            "/v1/chat/completions",
-            post(routes::completions::post_completions),
-        )
-        .route(
-            "/chat/completions",
-            post(routes::completions::post_completions),
-        )
-        .route("/v1/models", get(routes::models::get_models))
-        .route("/models", get(routes::models::get_models))
-        .route("/v1/messages", post(routes::messages::post_messages))
-        .layer(CorsLayer::permissive())
-        .with_state(state);
+	let app = Router::new()
+		.route("/", get(routes::health::health))
+		.route(
+			"/v1/chat/completions",
+			post(routes::completions::post_completions),
+		)
+		.route(
+			"/chat/completions",
+			post(routes::completions::post_completions),
+		)
+		.route("/v1/models", get(routes::models::get_models))
+		.route("/models", get(routes::models::get_models))
+		.route("/v1/messages", post(routes::messages::post_messages))
+		.layer(CorsLayer::permissive())
+		.with_state(state);
 
-    let listener = tokio::net::TcpListener::bind(("0.0.0.0", port))
-        .await
-        .expect("failed to bind");
+	let listener = tokio::net::TcpListener::bind(("0.0.0.0", port))
+		.await
+		.expect("failed to bind");
 
-    info!(port, "first-officer listening");
+	info!(port, "first-officer listening");
 
-    axum::serve(listener, app).await.expect("server error");
+	axum::serve(listener, app).await.expect("server error");
 }

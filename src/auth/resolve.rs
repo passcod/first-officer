@@ -15,10 +15,10 @@ use crate::state::AppState;
 /// 3. If neither is available, return 403.
 /// 4. Exchange the GH token for a short-lived Copilot token (cached).
 pub async fn resolve_copilot_token(
-    state: &Arc<AppState>,
-    headers: &HeaderMap,
+	state: &Arc<AppState>,
+	headers: &HeaderMap,
 ) -> Result<String, Response> {
-    let gh_token = extract_gh_token(headers)
+	let gh_token = extract_gh_token(headers)
         .map(|s| s.to_string())
         .or_else(|| state.default_github_token.clone())
         .ok_or_else(|| {
@@ -35,22 +35,22 @@ pub async fn resolve_copilot_token(
                 .into_response()
         })?;
 
-    state
-        .token_cache
-        .get_copilot_token(&gh_token, &state.client, &state.vscode_version)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "copilot token exchange failed");
-            (
-                StatusCode::UNAUTHORIZED,
-                Json(serde_json::json!({
-                    "type": "error",
-                    "error": {
-                        "type": "authentication_error",
-                        "message": format!("copilot token exchange failed: {e}")
-                    }
-                })),
-            )
-                .into_response()
-        })
+	state
+		.token_cache
+		.get_copilot_token(&gh_token, &state.client, &state.vscode_version)
+		.await
+		.map_err(|e| {
+			error!(error = %e, "copilot token exchange failed");
+			(
+				StatusCode::UNAUTHORIZED,
+				Json(serde_json::json!({
+					"type": "error",
+					"error": {
+						"type": "authentication_error",
+						"message": format!("copilot token exchange failed: {e}")
+					}
+				})),
+			)
+				.into_response()
+		})
 }
