@@ -20,6 +20,26 @@ pub struct ModelRenamer {
 	learned_reverse: RwLock<HashMap<String, String>>,
 }
 
+/// Strip date suffix in the format `-YYYYMMDD` from model names.
+/// Allows version pinning like `claude-sonnet-4-5-20250115` → `claude-sonnet-4-5`.
+fn strip_date_suffix(name: &str) -> Option<String> {
+	// Look for a pattern like `-20250115` at the end
+	let parts: Vec<&str> = name.rsplitn(2, '-').collect();
+	if parts.len() == 2 {
+		let potential_date = parts[0];
+		// Check if it's exactly 8 digits (YYYYMMDD)
+		if potential_date.len() == 8 && potential_date.chars().all(|c| c.is_ascii_digit()) {
+			// Basic validation: year should be reasonable (2020-2099)
+			if let Some(year_str) = potential_date.get(0..4)
+				&& let Ok(year) = year_str.parse::<u32>()
+					&& (2020..2100).contains(&year) {
+						return Some(parts[1].to_string());
+					}
+		}
+	}
+	None
+}
+
 /// Replace dots between digits with dashes: `4.6` → `4-6`, `3.5.1` → `3-5-1`.
 /// Leaves other dots alone (e.g. hypothetical `v2.0` stays).
 fn replace_version_dots(s: &str) -> String {
@@ -163,13 +183,22 @@ impl ModelRenamer {
 	}
 
 	/// Map a display name back to the upstream (Copilot) model ID.
-	/// Priority: custom → learned (from model list) → pass through.
+	/// Priority: custom → learned (from model list) → strip date suffix → pass through.
 	pub fn resolve(&self, display_name: &str) -> String {
 		if let Some(custom) = self.custom_reverse.get(display_name) {
 			return custom.clone();
 		}
 		if let Some(learned) = self.learned_reverse.read().unwrap().get(display_name) {
 			return learned.clone();
+		}
+		// Try stripping date suffix (e.g., claude-sonnet-4-5-20250115 → claude-sonnet-4-5)
+		if let Some(stripped) = strip_date_suffix(display_name) {
+			if let Some(learned) = self.learned_reverse.read().unwrap().get(&stripped) {
+				return learned.clone();
+			}
+			// If the stripped version isn't learned, just return it
+			// (it will be passed through to Copilot, which might understand it)
+			return stripped;
 		}
 		display_name.to_string()
 	}
@@ -401,6 +430,40 @@ mod tests {
 		let r = renamer(true, &[]);
 		assert_eq!(r.rename("some-unknown-model"), "some-unknown-model");
 		assert_eq!(r.resolve("some-unknown-model"), "some-unknown-model");
+	}
+
+	#[test]
+	fn date_suffix_stripped_on_resolve() {
+		let r = renamer(true, &[]);
+		apply_model_list(&r, &["claude-sonnet-4.5"]);
+
+		// Requesting with date suffix should resolve to the base model
+		assert_eq!(r.resolve("claude-sonnet-4-5-20250115"), "claude-sonnet-4.5");
+		assert_eq!(r.resolve("claude-sonnet-4-5-20241225"), "claude-sonnet-4.5");
+	}
+
+	#[test]
+	fn date_suffix_not_stripped_if_not_date() {
+		let r = renamer(true, &[]);
+
+		// Not 8 digits - should not be stripped
+		assert_eq!(r.resolve("model-123"), "model-123");
+		assert_eq!(r.resolve("model-12345"), "model-12345");
+
+		// Not all digits - should not be stripped
+		assert_eq!(r.resolve("model-2025011a"), "model-2025011a");
+
+		// Year out of range - should not be stripped
+		assert_eq!(r.resolve("model-19991231"), "model-19991231");
+		assert_eq!(r.resolve("model-21000101"), "model-21000101");
+	}
+
+	#[test]
+	fn date_suffix_stripped_even_if_not_learned() {
+		let r = renamer(true, &[]);
+		// No models learned, but date suffix should still be stripped
+		assert_eq!(r.resolve("gpt-4o-20250115"), "gpt-4o");
+		assert_eq!(r.resolve("claude-opus-5-20250601"), "claude-opus-5");
 	}
 
 	// --- replace_version_dots ---
