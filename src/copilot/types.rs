@@ -229,6 +229,25 @@ pub struct ModelsResponse {
 	pub object: String,
 }
 
+// Anthropic-compatible models response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnthropicModelsResponse {
+	pub data: Vec<AnthropicModelInfo>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub first_id: Option<String>,
+	pub has_more: bool,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub last_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnthropicModelInfo {
+	pub id: String,
+	pub created_at: String,
+	pub display_name: String,
+	pub r#type: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Model {
 	pub id: String,
