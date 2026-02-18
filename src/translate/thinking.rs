@@ -307,11 +307,11 @@ mod streaming_tests {
 	#[test]
 	fn stream_tag_split_across_chunks() {
 		let mut parser = ThinkingStreamParser::new();
-		let events = parser.push("Text <thi");
-		// "Text <thi" = 9 chars, reserve is 10, nothing emitted
+		let events = parser.push("Text <thin");
+		// "Text <thin" = 10 chars, reserve is 10, nothing emitted
 		assert_eq!(events.len(), 0);
 
-		let events = parser.push("nking>inside</thinking>after");
+		let events = parser.push("king>inside</thinking>after");
 		// Completes tag, emits "Text ", opens thinking, emits "inside", closes thinking
 		assert_eq!(events.len(), 4);
 		assert!(matches!(&events[0], ThinkingEvent::TextDelta(s) if s == "Text "));
