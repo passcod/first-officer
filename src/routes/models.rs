@@ -11,17 +11,23 @@ use crate::copilot::client::fetch_models;
 use crate::state::AppState;
 
 pub async fn get_models(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Response {
-	// Try to serve from cache first
+	// Try to serve from cache first if valid
 	{
 		let models = state.models.read().await;
-		if let Some(m) = models.as_ref() {
-			info!(count = m.data.len(), "serving models list from cache");
-			return Json(m.clone()).into_response();
+		if let Some(cached) = models.as_ref() {
+			if state.is_models_cache_valid(cached) {
+				info!(
+					count = cached.response.data.len(),
+					"serving models list from cache"
+				);
+				return Json(cached.response.clone()).into_response();
+			}
+			info!("models cache expired, refetching");
 		}
 	}
 
-	// Cache is empty - fetch on-demand
-	info!("models not cached, fetching on-demand");
+	// Cache is empty or expired - fetch on-demand
+	info!("fetching models on-demand");
 
 	// Get a GitHub token from request or default
 	let gh_token = extract_gh_token(&headers)
@@ -107,8 +113,11 @@ pub async fn get_models(State(state): State<Arc<AppState>>, headers: HeaderMap) 
 		"fetched and cached models on-demand"
 	);
 
-	// Update cache
-	*state.models.write().await = Some(models.clone());
+	// Update cache with timestamp
+	*state.models.write().await = Some(crate::state::CachedModels {
+		response: models.clone(),
+		cached_at: std::time::SystemTime::now(),
+	});
 
 	Json(models).into_response()
 }

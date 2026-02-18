@@ -85,7 +85,10 @@ async fn main() {
 					}
 					let names: Vec<&str> = models.data.iter().map(|m| m.id.as_str()).collect();
 					info!(count = models.data.len(), models = ?names, "cached models");
-					*state.models.write().await = Some(models);
+					*state.models.write().await = Some(state::CachedModels {
+						response: models,
+						cached_at: std::time::SystemTime::now(),
+					});
 				}
 				Err(e) => {
 					error!(error = %e, "failed to fetch models (continuing without cache)");

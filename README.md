@@ -65,3 +65,10 @@ There's also two environment variables available to further customise this:
 
 The Copilot API doesn't support Anthropic's "thinking" mode, but First Officer emulates it.
 You can disable this by setting `EMULATE_THINKING` to `false`.
+
+## Model list cache
+
+The `/v1/models` route returns the list of available models, as expected in the OpenAI API.
+However, to save on API calls, that list is cached, with an default TTL of 1 hour.
+You can change that with the `MODELS_CACHE_TTL` and an integer value in seconds.
+Set to 0 to disable caching.
