@@ -126,9 +126,21 @@ fn translate_user_message(content: &UserContent) -> Vec<Message> {
 			// Tool results must come first
 			for block in blocks {
 				if let UserContentBlock::ToolResult(tr) = block {
+					let content_text = match &tr.content {
+						crate::translate::types::ToolResultContent::Text(s) => s.clone(),
+						crate::translate::types::ToolResultContent::Blocks(blocks) => blocks
+							.iter()
+							.map(|b| match b {
+								crate::translate::types::ToolResultContentBlock::Text(t) => {
+									t.text.as_str()
+								}
+							})
+							.collect::<Vec<_>>()
+							.join("\n\n"),
+					};
 					out.push(Message {
 						role: "tool".to_string(),
-						content: Some(Content::Text(tr.content.clone())),
+						content: Some(Content::Text(content_text)),
 						name: None,
 						tool_calls: None,
 						tool_call_id: Some(tr.tool_use_id.clone()),

@@ -115,9 +115,23 @@ pub struct ImageSource {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum ToolResultContent {
+	Text(String),
+	Blocks(Vec<ToolResultContentBlock>),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type")]
+pub enum ToolResultContentBlock {
+	#[serde(rename = "text")]
+	Text(TextBlock),
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct ToolResultBlock {
 	pub tool_use_id: String,
-	pub content: String,
+	pub content: ToolResultContent,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

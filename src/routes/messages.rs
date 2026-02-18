@@ -2,7 +2,7 @@ use std::convert::Infallible;
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{FromRequest, Request, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
@@ -19,10 +19,62 @@ use crate::translate::response::translate_response;
 use crate::translate::stream::translate_chunk;
 use crate::translate::types::{MessagesRequest, StreamState};
 
+pub struct JsonWithLogging<T>(T);
+
+impl<T> FromRequest<Arc<AppState>> for JsonWithLogging<T>
+where
+	T: serde::de::DeserializeOwned,
+{
+	type Rejection = Response;
+
+	async fn from_request(req: Request, _state: &Arc<AppState>) -> Result<Self, Self::Rejection> {
+		let (_parts, body) = req.into_parts();
+		let bytes = match axum::body::to_bytes(body, usize::MAX).await {
+			Ok(b) => b,
+			Err(e) => {
+				error!(error = %e, "failed to read request body");
+				return Err((
+					StatusCode::BAD_REQUEST,
+					Json(serde_json::json!({
+						"type": "error",
+						"error": {
+							"type": "invalid_request_error",
+							"message": format!("failed to read request body: {e}")
+						}
+					})),
+				)
+					.into_response());
+			}
+		};
+
+		match serde_json::from_slice::<T>(&bytes) {
+			Ok(value) => Ok(JsonWithLogging(value)),
+			Err(e) => {
+				error!(
+					error = %e,
+					body = %String::from_utf8_lossy(&bytes),
+					"failed to deserialize request body"
+				);
+				Err((
+					StatusCode::UNPROCESSABLE_ENTITY,
+					Json(serde_json::json!({
+						"type": "error",
+						"error": {
+							"type": "invalid_request_error",
+							"message": format!("Failed to deserialize the JSON body into the target type: {e}")
+						}
+					})),
+				)
+					.into_response())
+			}
+		}
+	}
+}
+
 pub async fn post_messages(
 	State(state): State<Arc<AppState>>,
 	headers: HeaderMap,
-	Json(mut req): Json<MessagesRequest>,
+	JsonWithLogging(mut req): JsonWithLogging<MessagesRequest>,
 ) -> Response {
 	let copilot_token = match resolve_copilot_token(&state, &headers).await {
 		Ok(t) => t,
