@@ -86,6 +86,13 @@ async fn main() {
 					}
 					let names: Vec<&str> = models.data.iter().map(|m| m.id.as_str()).collect();
 					info!(count = models.data.len(), models = ?names, "cached models");
+
+					let learned = state.renamer.dump_learned();
+					info!(count = learned.len(), "learned model mappings");
+					for (display_name, upstream_name) in &learned {
+						info!(display = %display_name, upstream = %upstream_name, "mapping");
+					}
+
 					*state.models.write().await = Some(state::CachedModels {
 						response: models,
 						cached_at: std::time::SystemTime::now(),

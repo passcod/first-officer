@@ -207,6 +207,16 @@ impl ModelRenamer {
 	pub fn has_rules(&self) -> bool {
 		self.auto_enabled || !self.custom_forward.is_empty()
 	}
+
+	/// Debug method to inspect learned reverse mappings.
+	pub fn dump_learned(&self) -> Vec<(String, String)> {
+		self.learned_reverse
+			.read()
+			.unwrap()
+			.iter()
+			.map(|(k, v)| (k.clone(), v.clone()))
+			.collect()
+	}
 }
 
 #[cfg(test)]

@@ -8,7 +8,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use futures::StreamExt;
 use futures::stream::Stream;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::auth::resolve::resolve_copilot_token;
 use crate::copilot::client::chat_completions_raw;
@@ -30,7 +30,22 @@ pub async fn post_messages(
 	};
 
 	let display_model = req.model.clone();
-	req.model = state.renamer.resolve(&req.model);
+
+	// Ensure models are learned for resolution
+	if state.renamer.dump_learned().is_empty() {
+		debug!("no learned model mappings, fetching models on-demand");
+		if let Err(e) = ensure_models_cached(&state, &copilot_token).await {
+			warn!(error = %e, "failed to fetch models for resolution, proceeding anyway");
+		}
+	}
+
+	let resolved_model = state.renamer.resolve(&req.model);
+	info!(
+		display = %display_model,
+		resolved = %resolved_model,
+		"model resolution"
+	);
+	req.model = resolved_model;
 
 	let is_streaming = req.stream.unwrap_or(false);
 	let vision = has_vision_content(&req);
@@ -283,6 +298,54 @@ fn parse_sse_data(block: &str) -> Option<String> {
 	} else {
 		Some(data_parts.join("\n"))
 	}
+}
+
+async fn ensure_models_cached(state: &AppState, copilot_token: &str) -> Result<(), anyhow::Error> {
+	// Check if cache is valid
+	{
+		let models = state.models.read().await;
+		if let Some(cached) = models.as_ref()
+			&& state.is_models_cache_valid(cached)
+		{
+			debug!("models cache is valid, using cached mappings");
+			return Ok(());
+		}
+	}
+
+	// Fetch and cache models
+	let mut models = crate::copilot::client::fetch_models(
+		&state.client,
+		copilot_token,
+		&state.account_type,
+		&state.vscode_version,
+	)
+	.await?;
+
+	// Apply model renaming and register mappings
+	for model in &mut models.data {
+		let renamed = state.renamer.rename(&model.id);
+		state.renamer.register(&model.id, &renamed);
+		if renamed != model.id {
+			info!(from = %model.id, to = %renamed, "renamed model");
+			model.id = renamed;
+		}
+	}
+
+	let names: Vec<&str> = models.data.iter().map(|m| m.id.as_str()).collect();
+	info!(count = models.data.len(), models = ?names, "cached models");
+
+	let learned = state.renamer.dump_learned();
+	info!(count = learned.len(), "learned model mappings");
+	for (display_name, upstream_name) in &learned {
+		info!(display = %display_name, upstream = %upstream_name, "mapping");
+	}
+
+	*state.models.write().await = Some(crate::state::CachedModels {
+		response: models,
+		cached_at: std::time::SystemTime::now(),
+	});
+
+	Ok(())
 }
 
 #[cfg(test)]

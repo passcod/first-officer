@@ -115,10 +115,14 @@ pub async fn get_models(State(state): State<Arc<AppState>>, headers: HeaderMap) 
 		}
 	}
 
-	info!(
-		count = models.data.len(),
-		"fetched and cached models on-demand"
-	);
+	let names: Vec<&str> = models.data.iter().map(|m| m.id.as_str()).collect();
+	info!(count = models.data.len(), models = ?names, "cached models");
+
+	let learned = state.renamer.dump_learned();
+	info!(count = learned.len(), "learned model mappings");
+	for (display_name, upstream_name) in &learned {
+		info!(display = %display_name, upstream = %upstream_name, "mapping");
+	}
 
 	// Update cache with timestamp
 	*state.models.write().await = Some(crate::state::CachedModels {
