@@ -1,12 +1,14 @@
-#![allow(dead_code)]
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 // --- Messages Request ---
 
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
+#[expect(
+	dead_code,
+	reason = "fields are deserialized from incoming requests but not all are read directly"
+)]
 pub struct MessagesRequest {
 	pub model: String,
 	pub messages: Vec<AnthropicMessage>,
@@ -48,7 +50,7 @@ pub struct Metadata {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
+#[expect(dead_code, reason = "deserialized from request but not yet forwarded")]
 pub struct ThinkingConfig {
 	pub r#type: String,
 	pub budget_tokens: Option<u64>,
@@ -114,7 +116,7 @@ pub struct ImageBlock {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
+#[expect(dead_code, reason = "type field is part of the Anthropic API schema")]
 pub struct ImageSource {
 	pub r#type: String,
 	pub media_type: String,
@@ -122,7 +124,10 @@ pub struct ImageSource {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
+#[expect(
+	dead_code,
+	reason = "is_error field is part of the Anthropic API schema"
+)]
 pub struct ToolResultBlock {
 	pub tool_use_id: String,
 	pub content: String,
@@ -175,7 +180,10 @@ pub struct MessagesResponse {
 
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
-#[allow(dead_code)]
+#[expect(
+	dead_code,
+	reason = "variants represent all possible Anthropic stop reasons"
+)]
 pub enum StopReason {
 	EndTurn,
 	MaxTokens,
@@ -199,7 +207,10 @@ pub struct AnthropicUsage {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
-#[allow(dead_code)]
+#[expect(
+	dead_code,
+	reason = "variants represent all possible Anthropic SSE event types"
+)]
 pub enum StreamEvent {
 	#[serde(rename = "message_start")]
 	MessageStart { message: MessageStartBody },
@@ -262,7 +273,10 @@ pub struct MessageStartBody {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
-#[allow(dead_code)]
+#[expect(
+	dead_code,
+	reason = "variants represent all Anthropic content block types"
+)]
 pub enum ContentBlockStartBody {
 	#[serde(rename = "text")]
 	Text { text: String },
@@ -278,7 +292,10 @@ pub enum ContentBlockStartBody {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
-#[allow(dead_code)]
+#[expect(
+	dead_code,
+	reason = "variants represent all Anthropic content delta types"
+)]
 pub enum ContentDelta {
 	#[serde(rename = "text_delta")]
 	Text { text: String },
@@ -313,7 +330,10 @@ pub struct StreamState {
 	pub tool_calls: HashMap<u32, ToolCallState>,
 }
 
-#[allow(dead_code)]
+#[expect(
+	dead_code,
+	reason = "name is stored for potential future use in diagnostics"
+)]
 pub struct ToolCallState {
 	pub id: String,
 	pub name: String,

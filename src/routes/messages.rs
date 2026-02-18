@@ -136,7 +136,7 @@ fn handle_streaming(
 				let mut chunk: ChatCompletionChunk = match serde_json::from_str(&event_data) {
 					Ok(c) => c,
 					Err(e) => {
-						debug!(error = %e, data = %event_data, "skipping unparseable chunk");
+						debug!(error = %e, data = %event_data, "skipping unparsable chunk");
 						continue;
 					}
 				};

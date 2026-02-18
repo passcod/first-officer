@@ -3,3 +3,4 @@
 [files]
 
 [default.extend-words]
+fo = "fo"
