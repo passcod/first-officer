@@ -5,7 +5,7 @@ use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use futures::StreamExt;
-use tracing::error;
+use tracing::{debug, error, info};
 
 use crate::auth::resolve::resolve_copilot_token;
 use crate::copilot::client::chat_completions_raw;
@@ -26,6 +26,24 @@ pub async fn post_completions(
 	let vision = detect_vision(&body);
 	let is_agent = detect_agent(&body);
 
+	// Log the incoming request
+	if let Ok(req) = serde_json::from_slice::<ChatCompletionsRequest>(&body) {
+		let is_streaming = req.stream.unwrap_or(false);
+		info!(
+			model = %req.model,
+			streaming = is_streaming,
+			messages = req.messages.len(),
+			vision = vision,
+			agent = is_agent,
+			"incoming /v1/chat/completions request"
+		);
+		debug!(
+			max_tokens = ?req.max_tokens,
+			temperature = ?req.temperature,
+			"request parameters"
+		);
+	}
+
 	let resp = chat_completions_raw(
 		&state.client,
 		&copilot_token,
@@ -44,6 +62,8 @@ pub async fn post_completions(
 			return StatusCode::BAD_GATEWAY.into_response();
 		}
 	};
+
+	debug!(status = %upstream.status(), "received response from Copilot API");
 
 	let status = upstream.status();
 	let is_stream = upstream
@@ -65,6 +85,7 @@ pub async fn post_completions(
 			})
 		});
 
+		info!("streaming response started");
 		(status, headers, Body::from_stream(byte_stream)).into_response()
 	} else {
 		headers.insert("content-type", "application/json".parse().unwrap());
@@ -77,6 +98,7 @@ pub async fn post_completions(
 			}
 		};
 
+		info!(status = %status, bytes = bytes.len(), "non-streaming response complete");
 		(status, headers, bytes).into_response()
 	}
 }

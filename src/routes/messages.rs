@@ -8,7 +8,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use futures::StreamExt;
 use futures::stream::Stream;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use crate::auth::resolve::resolve_copilot_token;
 use crate::copilot::client::chat_completions_raw;
@@ -36,6 +36,16 @@ pub async fn post_messages(
 	let vision = has_vision_content(&req);
 	let agent = is_agent_call(&req);
 
+	info!(
+		model = %display_model,
+		streaming = is_streaming,
+		messages = req.messages.len(),
+		vision = vision,
+		agent = agent,
+		thinking = req.thinking.is_some(),
+		"incoming /v1/messages request"
+	);
+
 	let openai_req = translate_request(&req, state.emulate_thinking);
 	let body = match serde_json::to_vec(&openai_req) {
 		Ok(b) => b,
@@ -44,6 +54,13 @@ pub async fn post_messages(
 			return StatusCode::INTERNAL_SERVER_ERROR.into_response();
 		}
 	};
+
+	debug!(
+		upstream_model = %openai_req.model,
+		upstream_messages = openai_req.messages.len(),
+		max_tokens = ?openai_req.max_tokens,
+		"sending request to Copilot API"
+	);
 
 	let upstream = match chat_completions_raw(
 		&state.client,
@@ -58,7 +75,7 @@ pub async fn post_messages(
 	{
 		Ok(r) => r,
 		Err(e) => {
-			error!(error = %e, "copilot request failed");
+			error!(error = %e, model = %display_model, "copilot request failed");
 			return (
 				StatusCode::BAD_GATEWAY,
 				Json(serde_json::json!({
@@ -72,6 +89,12 @@ pub async fn post_messages(
 				.into_response();
 		}
 	};
+
+	debug!(
+		status = %upstream.status(),
+		streaming = is_streaming,
+		"received response from Copilot API"
+	);
 
 	if !is_streaming {
 		return handle_non_streaming(upstream, display_model, state.emulate_thinking).await;
@@ -106,7 +129,17 @@ async fn handle_non_streaming(
 	};
 
 	let mut anthropic_resp = translate_response(&openai_resp, emulate_thinking);
-	anthropic_resp.model = display_model;
+	anthropic_resp.model = display_model.clone();
+
+	info!(
+		model = %display_model,
+		stop_reason = ?anthropic_resp.stop_reason,
+		content_blocks = anthropic_resp.content.len(),
+		input_tokens = anthropic_resp.usage.input_tokens,
+		output_tokens = anthropic_resp.usage.output_tokens,
+		"non-streaming response complete"
+	);
+
 	Json(anthropic_resp).into_response()
 }
 
@@ -165,6 +198,8 @@ fn handle_streaming(
 				}
 			}
 		}
+
+		info!(model = %display_model, "streaming response complete");
 
 		// Flush any buffered content from the thinking parser
 		if let Some(parser) = state.thinking_parser.take()
