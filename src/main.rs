@@ -8,12 +8,14 @@ use tracing::{error, info};
 
 mod auth;
 mod copilot;
+mod rename;
 mod routes;
 mod state;
 mod translate;
 
 use auth::token::{initial_token_exchange, spawn_refresh_loop};
 use copilot::client::fetch_models;
+use rename::ModelRenamer;
 use state::AppState;
 
 const DEFAULT_VSCODE_VERSION: &str = "1.100.0";
@@ -36,7 +38,13 @@ async fn main() {
     let vscode_version =
         env::var("VSCODE_VERSION").unwrap_or_else(|_| DEFAULT_VSCODE_VERSION.to_string());
 
-    let state = Arc::new(AppState::new(github_token, account_type, vscode_version));
+    let renamer = ModelRenamer::from_env();
+    let state = Arc::new(AppState::new(
+        github_token,
+        account_type,
+        vscode_version,
+        renamer,
+    ));
 
     if let Err(e) = initial_token_exchange(&state).await {
         error!(error = %e, "failed to acquire initial copilot token");
@@ -44,7 +52,15 @@ async fn main() {
     }
 
     match fetch_models(&state).await {
-        Ok(models) => {
+        Ok(mut models) => {
+            for model in &mut models.data {
+                let renamed = state.renamer.rename(&model.id);
+                state.renamer.register(&model.id, &renamed);
+                if renamed != model.id {
+                    info!(from = %model.id, to = %renamed, "renamed model");
+                    model.id = renamed;
+                }
+            }
             let names: Vec<&str> = models.data.iter().map(|m| m.id.as_str()).collect();
             info!(count = models.data.len(), models = ?names, "cached models");
             *state.models.write().await = Some(models);

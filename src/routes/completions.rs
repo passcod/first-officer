@@ -15,6 +15,7 @@ pub async fn post_completions(
     State(state): State<Arc<AppState>>,
     body: axum::body::Bytes,
 ) -> Response {
+    let body = resolve_model_name(&state, &body);
     let vision = detect_vision(&body);
     let is_agent = detect_agent(&body);
 
@@ -98,4 +99,21 @@ fn detect_agent(body: &[u8]) -> bool {
     req.messages
         .iter()
         .any(|msg| msg.role == "assistant" || msg.role == "tool")
+}
+
+/// If the request's model name is a renamed display name, swap it back to the
+/// upstream Copilot model ID before forwarding.
+fn resolve_model_name(state: &AppState, body: &[u8]) -> Vec<u8> {
+    if !state.renamer.has_rules() {
+        return body.to_vec();
+    }
+    let Ok(mut req) = serde_json::from_slice::<ChatCompletionsRequest>(body) else {
+        return body.to_vec();
+    };
+    let resolved = state.renamer.resolve(&req.model);
+    if resolved == req.model {
+        return body.to_vec();
+    }
+    req.model = resolved;
+    serde_json::to_vec(&req).unwrap_or_else(|_| body.to_vec())
 }

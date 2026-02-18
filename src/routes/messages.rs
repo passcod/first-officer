@@ -20,8 +20,11 @@ use crate::translate::types::{MessagesRequest, StreamState};
 
 pub async fn post_messages(
     State(state): State<Arc<AppState>>,
-    Json(req): Json<MessagesRequest>,
+    Json(mut req): Json<MessagesRequest>,
 ) -> Response {
+    let display_model = req.model.clone();
+    req.model = state.renamer.resolve(&req.model);
+
     let is_streaming = req.stream.unwrap_or(false);
     let vision = has_vision_content(&req);
     let agent = is_agent_call(&req);
@@ -65,13 +68,13 @@ pub async fn post_messages(
     };
 
     if !is_streaming {
-        return handle_non_streaming(upstream).await;
+        return handle_non_streaming(upstream, display_model).await;
     }
 
-    handle_streaming(upstream).into_response()
+    handle_streaming(upstream, display_model).into_response()
 }
 
-async fn handle_non_streaming(upstream: reqwest::Response) -> Response {
+async fn handle_non_streaming(upstream: reqwest::Response, display_model: String) -> Response {
     let bytes = match upstream.bytes().await {
         Ok(b) => b,
         Err(e) => {
@@ -92,12 +95,14 @@ async fn handle_non_streaming(upstream: reqwest::Response) -> Response {
         }
     };
 
-    let anthropic_resp = translate_response(&openai_resp);
+    let mut anthropic_resp = translate_response(&openai_resp);
+    anthropic_resp.model = display_model;
     Json(anthropic_resp).into_response()
 }
 
 fn handle_streaming(
     upstream: reqwest::Response,
+    display_model: String,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let stream = async_stream::stream! {
         let mut state = StreamState::new();
@@ -122,7 +127,7 @@ fn handle_streaming(
                     break;
                 }
 
-                let chunk: ChatCompletionChunk = match serde_json::from_str(&event_data) {
+                let mut chunk: ChatCompletionChunk = match serde_json::from_str(&event_data) {
                     Ok(c) => c,
                     Err(e) => {
                         debug!(error = %e, data = %event_data, "skipping unparseable chunk");
@@ -130,6 +135,7 @@ fn handle_streaming(
                     }
                 };
 
+                chunk.model = display_model.clone();
                 let events = translate_chunk(&chunk, &mut state);
                 for ev in events {
                     let data = match serde_json::to_string(&ev) {
