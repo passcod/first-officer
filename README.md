@@ -4,6 +4,9 @@ Use GitHub Copilot as if it was the Anthropic API (e.g. for Claude Code).
 
 This was inspired by <https://github.com/ericc-ch/copilot-api> but in Rust with a different feature set to make it easier to use with things that expect the Claude Code / Anthropic API.
 
+Compared to the original, there's also no persistent state, so it can be scaled, and you can use multiple github tokens (ie it can be used by multiple people).
+See below for more features.
+
 ## Quick start
 
 Start the server:
