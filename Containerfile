@@ -19,5 +19,5 @@ RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then \
 	fi && \
 	rm -rf /tmp/bins
 
-USER fo
+USER operator
 ENTRYPOINT ["first-officer"]
