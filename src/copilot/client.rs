@@ -1,3 +1,4 @@
+use anyhow::Context;
 use reqwest::Client;
 use tracing::debug;
 
@@ -28,7 +29,7 @@ pub async fn fetch_models(
 	copilot_token: &str,
 	account_type: &str,
 	vscode_version: &str,
-) -> Result<ModelsResponse, reqwest::Error> {
+) -> Result<ModelsResponse, anyhow::Error> {
 	let base = copilot_base_url(account_type);
 	debug!(url = %format!("{base}/models"), "fetching models from Copilot API");
 	let headers = copilot_headers(copilot_token, vscode_version, false);
@@ -36,12 +37,34 @@ pub async fn fetch_models(
 		.get(format!("{base}/models"))
 		.headers(headers)
 		.send()
-		.await?
-		.error_for_status()?
-		.json()
-		.await?;
-	debug!("models fetched successfully");
-	Ok(resp)
+		.await
+		.context("failed to send models request")?;
+
+	let status = resp.status();
+	debug!(status = %status, "received models response");
+
+	let resp = resp
+		.error_for_status()
+		.context("models request returned error status")?;
+
+	let body = resp
+		.bytes()
+		.await
+		.context("failed to read models response body")?;
+	debug!(size = body.len(), "received models response body");
+
+	let models: ModelsResponse = serde_json::from_slice(&body).map_err(|e| {
+		tracing::error!(
+			error = %e,
+			status = %status,
+			body = %String::from_utf8_lossy(&body),
+			"failed to parse models response"
+		);
+		e
+	})?;
+
+	debug!("models fetched and parsed successfully");
+	Ok(models)
 }
 
 pub async fn chat_completions_raw(

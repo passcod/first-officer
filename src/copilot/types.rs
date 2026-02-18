@@ -249,7 +249,8 @@ pub struct Model {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelCapabilities {
 	pub family: String,
-	pub limits: ModelLimits,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub limits: Option<ModelLimits>,
 	pub object: String,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub supports: Option<serde_json::Value>,
