@@ -115,7 +115,7 @@ async fn main() {
 		.layer(CorsLayer::permissive())
 		.with_state(state);
 
-	let listener = tokio::net::TcpListener::bind(("0.0.0.0", port))
+	let listener = tokio::net::TcpListener::bind(("::", port))
 		.await
 		.expect("failed to bind");
 
