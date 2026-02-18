@@ -122,9 +122,13 @@ pub struct ToolCallFunction {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionResponse {
+	#[serde(default)]
 	pub id: String,
+	#[serde(default)]
 	pub object: String,
+	#[serde(default)]
 	pub created: u64,
+	#[serde(default)]
 	pub model: String,
 	pub choices: Vec<Choice>,
 	#[serde(skip_serializing_if = "Option::is_none")]
@@ -135,8 +139,10 @@ pub struct ChatCompletionResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Choice {
+	#[serde(default)]
 	pub index: u32,
 	pub message: ResponseMessage,
+	#[serde(default)]
 	pub finish_reason: Option<String>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub logprobs: Option<serde_json::Value>,
@@ -144,7 +150,9 @@ pub struct Choice {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResponseMessage {
+	#[serde(default)]
 	pub role: String,
+	#[serde(default)]
 	pub content: Option<String>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub tool_calls: Option<Vec<ToolCall>>,
@@ -172,10 +180,15 @@ pub struct PromptTokensDetails {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionChunk {
+	#[serde(default)]
 	pub id: String,
+	#[serde(default)]
 	pub object: String,
+	#[serde(default)]
 	pub created: u64,
+	#[serde(default)]
 	pub model: String,
+	#[serde(default)]
 	pub choices: Vec<ChunkChoice>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub system_fingerprint: Option<String>,
@@ -226,6 +239,7 @@ pub struct DeltaFunction {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelsResponse {
 	pub data: Vec<Model>,
+	#[serde(default)]
 	pub object: String,
 }
 
@@ -251,9 +265,13 @@ pub struct AnthropicModelInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Model {
 	pub id: String,
+	#[serde(default)]
 	pub name: String,
+	#[serde(default)]
 	pub object: String,
+	#[serde(default)]
 	pub vendor: String,
+	#[serde(default)]
 	pub version: String,
 	#[serde(default)]
 	pub model_picker_enabled: bool,
@@ -267,9 +285,11 @@ pub struct Model {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelCapabilities {
+	#[serde(default)]
 	pub family: String,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub limits: Option<ModelLimits>,
+	#[serde(default)]
 	pub object: String,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub supports: Option<serde_json::Value>,
