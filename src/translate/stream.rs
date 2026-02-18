@@ -85,8 +85,6 @@ pub fn translate_chunk(chunk: &ChatCompletionChunk, state: &mut StreamState) -> 
 				state.tool_calls.insert(
 					tool_call.index,
 					crate::translate::types::ToolCallState {
-						id: id.clone(),
-						name: name.clone(),
 						anthropic_block_index,
 					},
 				);

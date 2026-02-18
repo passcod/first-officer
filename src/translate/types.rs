@@ -22,18 +22,11 @@ pub struct MessagesRequest {
 	#[serde(default)]
 	pub top_p: Option<f64>,
 	#[serde(default)]
-	#[expect(dead_code, reason = "part of the Anthropic API schema")]
-	pub top_k: Option<u64>,
-	#[serde(default)]
 	pub tools: Option<Vec<AnthropicTool>>,
 	#[serde(default)]
 	pub tool_choice: Option<AnthropicToolChoice>,
 	#[serde(default)]
-	#[expect(dead_code, reason = "part of the Anthropic API schema")]
 	pub thinking: Option<ThinkingConfig>,
-	#[serde(default)]
-	#[expect(dead_code, reason = "part of the Anthropic API schema")]
-	pub service_tier: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -50,9 +43,7 @@ pub struct Metadata {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ThinkingConfig {
-	#[expect(dead_code, reason = "part of the Anthropic API schema")]
 	pub r#type: String,
-	#[expect(dead_code, reason = "part of the Anthropic API schema")]
 	pub budget_tokens: Option<u64>,
 }
 
@@ -117,8 +108,6 @@ pub struct ImageBlock {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ImageSource {
-	#[expect(dead_code, reason = "part of the Anthropic API schema")]
-	pub r#type: String,
 	pub media_type: String,
 	pub data: String,
 }
@@ -127,9 +116,6 @@ pub struct ImageSource {
 pub struct ToolResultBlock {
 	pub tool_use_id: String,
 	pub content: String,
-	#[serde(default)]
-	#[expect(dead_code, reason = "part of the Anthropic API schema")]
-	pub is_error: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -180,13 +166,7 @@ pub struct MessagesResponse {
 pub enum StopReason {
 	EndTurn,
 	MaxTokens,
-	#[expect(dead_code, reason = "part of the Anthropic API schema")]
-	StopSequence,
 	ToolUse,
-	#[expect(dead_code, reason = "part of the Anthropic API schema")]
-	PauseTurn,
-	#[expect(dead_code, reason = "part of the Anthropic API schema")]
-	Refusal,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -230,11 +210,9 @@ pub enum StreamEvent {
 	MessageStop {},
 
 	#[serde(rename = "ping")]
-	#[expect(dead_code, reason = "part of the Anthropic SSE protocol")]
 	Ping {},
 
 	#[serde(rename = "error")]
-	#[expect(dead_code, reason = "part of the Anthropic SSE protocol")]
 	Error { error: StreamError },
 }
 
@@ -277,7 +255,6 @@ pub enum ContentBlockStartBody {
 		input: serde_json::Value,
 	},
 	#[serde(rename = "thinking")]
-	#[expect(dead_code, reason = "part of the Anthropic API schema")]
 	Thinking { thinking: String },
 }
 
@@ -289,11 +266,7 @@ pub enum ContentDelta {
 	#[serde(rename = "input_json_delta")]
 	InputJson { partial_json: String },
 	#[serde(rename = "thinking_delta")]
-	#[expect(dead_code, reason = "part of the Anthropic API schema")]
 	Thinking { thinking: String },
-	#[serde(rename = "signature_delta")]
-	#[expect(dead_code, reason = "part of the Anthropic API schema")]
-	Signature { signature: String },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -320,10 +293,6 @@ pub struct StreamState {
 }
 
 pub struct ToolCallState {
-	#[expect(dead_code, reason = "stored for diagnostics")]
-	pub id: String,
-	#[expect(dead_code, reason = "stored for diagnostics")]
-	pub name: String,
 	pub anthropic_block_index: u32,
 }
 
