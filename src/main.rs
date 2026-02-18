@@ -4,7 +4,8 @@ use std::sync::Arc;
 use axum::Router;
 use axum::routing::{get, post};
 use tower_http::cors::CorsLayer;
-use tracing::{error, info, warn};
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
+use tracing::{Level, error, info, warn};
 
 mod auth;
 mod copilot;
@@ -25,7 +26,7 @@ async fn main() {
 	tracing_subscriber::fmt()
 		.with_env_filter(
 			tracing_subscriber::EnvFilter::try_from_default_env()
-				.unwrap_or_else(|_| "first_officer=info".parse().unwrap()),
+				.unwrap_or_else(|_| "first_officer=info,tower_http=info".parse().unwrap()),
 		)
 		.init();
 
@@ -112,6 +113,11 @@ async fn main() {
 		.route("/v1/models", get(routes::models::get_models))
 		.route("/models", get(routes::models::get_models))
 		.route("/v1/messages", post(routes::messages::post_messages))
+		.layer(
+			TraceLayer::new_for_http()
+				.make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+				.on_response(DefaultOnResponse::new().level(Level::INFO)),
+		)
 		.layer(CorsLayer::permissive())
 		.with_state(state);
 
