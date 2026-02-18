@@ -28,6 +28,17 @@ Use the token to authenticate with the server:
 $ env ANTHROPIC_BASE_URL="http://localhost:4141" ANTHROPIC_AUTH_TOKEN="ghp_..." claude
 ```
 
+Or add this to `~/.claude/settings.json`:
+
+```json
+{
+  "apiKeyHelper": "cat ~/.local/share/copilot-api/github_token",
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:4141"
+  }
+}
+```
+
 ## Configuration
 
 Entirely done by environment variables, all of them optional:
