@@ -1,4 +1,5 @@
 use crate::copilot::types::ChatCompletionChunk;
+use crate::translate::thinking::ThinkingEvent;
 use crate::translate::types::{
 	AnthropicUsage, ContentBlockStartBody, ContentDelta, MessageDeltaBody, MessageStartBody,
 	StopReason, StreamEvent, StreamState,
@@ -41,29 +42,98 @@ pub fn translate_chunk(chunk: &ChatCompletionChunk, state: &mut StreamState) -> 
 	}
 
 	if let Some(ref text) = delta.content {
-		// If a tool block is open, close it before starting a text block
-		if state.is_tool_block_open() {
-			events.push(StreamEvent::ContentBlockStop {
-				index: state.content_block_index,
-			});
-			state.content_block_index += 1;
-			state.content_block_open = false;
-		}
+		// If thinking emulation is enabled, process through the parser
+		if let Some(ref mut parser) = state.thinking_parser {
+			let thinking_events = parser.push(text);
+			for thinking_event in thinking_events {
+				match thinking_event {
+					ThinkingEvent::ThinkingStart => {
+						// Close any open block before starting thinking
+						if state.content_block_open {
+							events.push(StreamEvent::ContentBlockStop {
+								index: state.content_block_index,
+							});
+							state.content_block_index += 1;
+						}
 
-		if !state.content_block_open {
-			events.push(StreamEvent::ContentBlockStart {
-				index: state.content_block_index,
-				content_block: ContentBlockStartBody::Text {
-					text: String::new(),
-				},
-			});
-			state.content_block_open = true;
-		}
+						// Open a new thinking block
+						events.push(StreamEvent::ContentBlockStart {
+							index: state.content_block_index,
+							content_block: ContentBlockStartBody::Thinking {
+								thinking: String::new(),
+							},
+						});
+						state.content_block_open = true;
+					}
+					ThinkingEvent::ThinkingDelta(thinking_text) => {
+						events.push(StreamEvent::ContentBlockDelta {
+							index: state.content_block_index,
+							delta: ContentDelta::Thinking {
+								thinking: thinking_text,
+							},
+						});
+					}
+					ThinkingEvent::ThinkingEnd => {
+						// Close the thinking block
+						events.push(StreamEvent::ContentBlockStop {
+							index: state.content_block_index,
+						});
+						state.content_block_index += 1;
+						state.content_block_open = false;
+					}
+					ThinkingEvent::TextDelta(text_chunk) => {
+						// If a tool block is open, close it before starting a text block
+						if state.is_tool_block_open() {
+							events.push(StreamEvent::ContentBlockStop {
+								index: state.content_block_index,
+							});
+							state.content_block_index += 1;
+							state.content_block_open = false;
+						}
 
-		events.push(StreamEvent::ContentBlockDelta {
-			index: state.content_block_index,
-			delta: ContentDelta::Text { text: text.clone() },
-		});
+						if !state.content_block_open {
+							events.push(StreamEvent::ContentBlockStart {
+								index: state.content_block_index,
+								content_block: ContentBlockStartBody::Text {
+									text: String::new(),
+								},
+							});
+							state.content_block_open = true;
+						}
+
+						events.push(StreamEvent::ContentBlockDelta {
+							index: state.content_block_index,
+							delta: ContentDelta::Text { text: text_chunk },
+						});
+					}
+				}
+			}
+		} else {
+			// No thinking emulation - pass through as regular text
+			// If a tool block is open, close it before starting a text block
+			if state.is_tool_block_open() {
+				events.push(StreamEvent::ContentBlockStop {
+					index: state.content_block_index,
+				});
+				state.content_block_index += 1;
+				state.content_block_open = false;
+			}
+
+			if !state.content_block_open {
+				events.push(StreamEvent::ContentBlockStart {
+					index: state.content_block_index,
+					content_block: ContentBlockStartBody::Text {
+						text: String::new(),
+					},
+				});
+				state.content_block_open = true;
+			}
+
+			events.push(StreamEvent::ContentBlockDelta {
+				index: state.content_block_index,
+				delta: ContentDelta::Text { text: text.clone() },
+			});
+		}
 	}
 
 	if let Some(ref tool_calls) = delta.tool_calls {
@@ -221,7 +291,7 @@ mod tests {
 
 	#[test]
 	fn first_chunk_emits_message_start_and_text() {
-		let mut state = StreamState::new();
+		let mut state = StreamState::new(false);
 		let chunk = make_chunk("c1", "gpt-4", vec![text_delta("Hello")]);
 		let events = translate_chunk(&chunk, &mut state);
 
@@ -235,7 +305,7 @@ mod tests {
 
 	#[test]
 	fn subsequent_text_reuses_block() {
-		let mut state = StreamState::new();
+		let mut state = StreamState::new(false);
 		let chunk1 = make_chunk("c1", "gpt-4", vec![text_delta("Hello")]);
 		translate_chunk(&chunk1, &mut state);
 
@@ -249,7 +319,7 @@ mod tests {
 
 	#[test]
 	fn finish_reason_closes_and_stops() {
-		let mut state = StreamState::new();
+		let mut state = StreamState::new(false);
 		let chunk1 = make_chunk("c1", "gpt-4", vec![text_delta("Hi")]);
 		translate_chunk(&chunk1, &mut state);
 
@@ -265,7 +335,7 @@ mod tests {
 
 	#[test]
 	fn tool_call_creates_new_block() {
-		let mut state = StreamState::new();
+		let mut state = StreamState::new(false);
 
 		// First: message_start from an empty role-only delta
 		let chunk1 = make_chunk(
@@ -331,7 +401,7 @@ mod tests {
 
 	#[test]
 	fn text_after_tool_closes_tool_block() {
-		let mut state = StreamState::new();
+		let mut state = StreamState::new(false);
 
 		// Start with a tool call
 		let chunk1 = make_chunk(

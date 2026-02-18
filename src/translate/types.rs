@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::translate::thinking::ThinkingStreamParser;
+
 // --- Messages Request ---
 
 #[derive(Debug, Clone, Deserialize)]
@@ -210,9 +212,11 @@ pub enum StreamEvent {
 	MessageStop {},
 
 	#[serde(rename = "ping")]
+	#[expect(dead_code, reason = "SSE keepalive event, reserved for future use")]
 	Ping {},
 
 	#[serde(rename = "error")]
+	#[expect(dead_code, reason = "SSE error event, reserved for future use")]
 	Error { error: StreamError },
 }
 
@@ -290,6 +294,7 @@ pub struct StreamState {
 	pub content_block_index: u32,
 	pub content_block_open: bool,
 	pub tool_calls: HashMap<u32, ToolCallState>,
+	pub thinking_parser: Option<ThinkingStreamParser>,
 }
 
 pub struct ToolCallState {
@@ -297,12 +302,17 @@ pub struct ToolCallState {
 }
 
 impl StreamState {
-	pub fn new() -> Self {
+	pub fn new(emulate_thinking: bool) -> Self {
 		Self {
 			message_start_sent: false,
 			content_block_index: 0,
 			content_block_open: false,
 			tool_calls: HashMap::new(),
+			thinking_parser: if emulate_thinking {
+				Some(ThinkingStreamParser::new())
+			} else {
+				None
+			},
 		}
 	}
 

@@ -7,11 +7,50 @@ use crate::translate::types::{
 	MessagesRequest, SystemPrompt, UserContent, UserContentBlock,
 };
 
-pub fn translate_request(req: &MessagesRequest) -> ChatCompletionsRequest {
+pub fn translate_request(req: &MessagesRequest, emulate_thinking: bool) -> ChatCompletionsRequest {
+	let thinking_enabled =
+		emulate_thinking && req.thinking.as_ref().is_some_and(|t| t.r#type == "enabled");
+
+	let (messages, max_tokens) = if thinking_enabled {
+		let thinking_budget = req
+			.thinking
+			.as_ref()
+			.and_then(|t| t.budget_tokens)
+			.unwrap_or(5000);
+
+		let adjusted_max_tokens = req.max_tokens.saturating_add(thinking_budget);
+
+		let thinking_system = "When thinking through a problem, wrap your reasoning in <thinking></thinking> XML tags. Put your final answer outside the tags.";
+
+		let combined_system = match &req.system {
+			Some(SystemPrompt::Text(s)) => {
+				SystemPrompt::Text(format!("{}\n\n{}", thinking_system, s))
+			}
+			Some(SystemPrompt::Blocks(blocks)) => {
+				let mut new_blocks = vec![crate::translate::types::TextBlock {
+					text: thinking_system.to_string(),
+				}];
+				new_blocks.extend(blocks.clone());
+				SystemPrompt::Blocks(new_blocks)
+			}
+			None => SystemPrompt::Text(thinking_system.to_string()),
+		};
+
+		(
+			translate_messages(&req.messages, &Some(combined_system)),
+			adjusted_max_tokens,
+		)
+	} else {
+		(
+			translate_messages(&req.messages, &req.system),
+			req.max_tokens,
+		)
+	};
+
 	ChatCompletionsRequest {
 		model: normalize_model_name(&req.model),
-		messages: translate_messages(&req.messages, &req.system),
-		max_tokens: Some(req.max_tokens),
+		messages,
+		max_tokens: Some(max_tokens),
 		temperature: req.temperature,
 		top_p: req.top_p,
 		stop: req.stop_sequences.as_ref().map(|s| {

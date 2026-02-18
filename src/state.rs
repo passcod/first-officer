@@ -1,3 +1,5 @@
+use std::env;
+
 use crate::auth::cache::TokenCache;
 use crate::copilot::types::ModelsResponse;
 use crate::rename::ModelRenamer;
@@ -11,6 +13,7 @@ pub struct AppState {
 	pub client: reqwest::Client,
 	pub renamer: ModelRenamer,
 	pub token_cache: TokenCache,
+	pub emulate_thinking: bool,
 }
 
 impl AppState {
@@ -20,6 +23,10 @@ impl AppState {
 		vscode_version: String,
 		renamer: ModelRenamer,
 	) -> Self {
+		let emulate_thinking = env::var("EMULATE_THINKING")
+			.map(|v| v != "false")
+			.unwrap_or(true);
+
 		Self {
 			default_github_token,
 			account_type,
@@ -28,6 +35,7 @@ impl AppState {
 			client: reqwest::Client::new(),
 			renamer,
 			token_cache: TokenCache::new(),
+			emulate_thinking,
 		}
 	}
 }

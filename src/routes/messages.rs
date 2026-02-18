@@ -36,7 +36,7 @@ pub async fn post_messages(
 	let vision = has_vision_content(&req);
 	let agent = is_agent_call(&req);
 
-	let openai_req = translate_request(&req);
+	let openai_req = translate_request(&req, state.emulate_thinking);
 	let body = match serde_json::to_vec(&openai_req) {
 		Ok(b) => b,
 		Err(e) => {
@@ -74,13 +74,17 @@ pub async fn post_messages(
 	};
 
 	if !is_streaming {
-		return handle_non_streaming(upstream, display_model).await;
+		return handle_non_streaming(upstream, display_model, state.emulate_thinking).await;
 	}
 
-	handle_streaming(upstream, display_model).into_response()
+	handle_streaming(upstream, display_model, state.emulate_thinking).into_response()
 }
 
-async fn handle_non_streaming(upstream: reqwest::Response, display_model: String) -> Response {
+async fn handle_non_streaming(
+	upstream: reqwest::Response,
+	display_model: String,
+	emulate_thinking: bool,
+) -> Response {
 	let bytes = match upstream.bytes().await {
 		Ok(b) => b,
 		Err(e) => {
@@ -101,7 +105,7 @@ async fn handle_non_streaming(upstream: reqwest::Response, display_model: String
 		}
 	};
 
-	let mut anthropic_resp = translate_response(&openai_resp);
+	let mut anthropic_resp = translate_response(&openai_resp, emulate_thinking);
 	anthropic_resp.model = display_model;
 	Json(anthropic_resp).into_response()
 }
@@ -109,9 +113,10 @@ async fn handle_non_streaming(upstream: reqwest::Response, display_model: String
 fn handle_streaming(
 	upstream: reqwest::Response,
 	display_model: String,
+	emulate_thinking: bool,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
 	let stream = async_stream::stream! {
-		let mut state = StreamState::new();
+		let mut state = StreamState::new(emulate_thinking);
 		let mut bytes_stream = upstream.bytes_stream();
 		let mut buffer = String::new();
 
@@ -160,6 +165,40 @@ fn handle_streaming(
 				}
 			}
 		}
+
+		// Flush any buffered content from the thinking parser
+		if let Some(parser) = state.thinking_parser.take()
+			&& let Some(final_event) = parser.finish() {
+				match final_event {
+					crate::translate::thinking::ThinkingEvent::ThinkingDelta(thinking_text) => {
+						let ev = crate::translate::types::StreamEvent::ContentBlockDelta {
+							index: state.content_block_index,
+							delta: crate::translate::types::ContentDelta::Thinking {
+								thinking: thinking_text,
+							},
+						};
+						if let Ok(data) = serde_json::to_string(&ev) {
+							let sse_event = Event::default()
+								.event(ev.event_type())
+								.data(data);
+							yield Ok(sse_event);
+						}
+					}
+					crate::translate::thinking::ThinkingEvent::TextDelta(text_chunk) => {
+						let ev = crate::translate::types::StreamEvent::ContentBlockDelta {
+							index: state.content_block_index,
+							delta: crate::translate::types::ContentDelta::Text { text: text_chunk },
+						};
+						if let Ok(data) = serde_json::to_string(&ev) {
+							let sse_event = Event::default()
+								.event(ev.event_type())
+								.data(data);
+							yield Ok(sse_event);
+						}
+					}
+					_ => {} // ThinkingStart/End shouldn't happen in finish
+				}
+			}
 	};
 
 	Sse::new(stream).keep_alive(KeepAlive::default())

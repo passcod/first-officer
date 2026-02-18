@@ -60,3 +60,8 @@ There's also two environment variables available to further customise this:
 
 - `MODEL_RENAME_AUTO` — set to `false` to disable pattern-based auto renaming.
 - `MODEL_RENAME_MAP` — JSON object `{"copilot-name": "api-name", ...}` applied on top of auto rules (custom entries take priority).
+
+## Thinking emulation
+
+The Copilot API doesn't support Anthropic's "thinking" mode, but First Officer emulates it.
+You can disable this by setting `EMULATE_THINKING` to `false`.

@@ -1,9 +1,13 @@
 use crate::copilot::types::{ChatCompletionResponse, ToolCall};
+use crate::translate::thinking::parse_thinking_blocks;
 use crate::translate::types::{
 	AnthropicUsage, AssistantContentBlock, MessagesResponse, StopReason, TextBlock, ToolUseBlock,
 };
 
-pub fn translate_response(resp: &ChatCompletionResponse) -> MessagesResponse {
+pub fn translate_response(
+	resp: &ChatCompletionResponse,
+	emulate_thinking: bool,
+) -> MessagesResponse {
 	let mut text_blocks: Vec<AssistantContentBlock> = Vec::new();
 	let mut tool_blocks: Vec<AssistantContentBlock> = Vec::new();
 	let mut stop_reason = None;
@@ -12,9 +16,13 @@ pub fn translate_response(resp: &ChatCompletionResponse) -> MessagesResponse {
 		if let Some(ref content) = choice.message.content
 			&& !content.is_empty()
 		{
-			text_blocks.push(AssistantContentBlock::Text(TextBlock {
-				text: content.clone(),
-			}));
+			if emulate_thinking {
+				text_blocks.extend(parse_thinking_blocks(content));
+			} else {
+				text_blocks.push(AssistantContentBlock::Text(TextBlock {
+					text: content.clone(),
+				}));
+			}
 		}
 
 		if let Some(ref tool_calls) = choice.message.tool_calls {
@@ -123,7 +131,7 @@ mod tests {
 			}),
 		};
 
-		let result = translate_response(&resp);
+		let result = translate_response(&resp, false);
 		assert_eq!(result.id, "chatcmpl-123");
 		assert_eq!(result.model, "gpt-4");
 		assert_eq!(result.content.len(), 1);
@@ -166,7 +174,7 @@ mod tests {
 			}),
 		};
 
-		let result = translate_response(&resp);
+		let result = translate_response(&resp, false);
 		assert!(matches!(result.stop_reason, Some(StopReason::ToolUse)));
 		assert_eq!(result.content.len(), 2);
 		assert!(
@@ -203,9 +211,47 @@ mod tests {
 			}),
 		};
 
-		let result = translate_response(&resp);
+		let result = translate_response(&resp, false);
 		assert_eq!(result.usage.input_tokens, 60);
 		assert_eq!(result.usage.output_tokens, 5);
 		assert_eq!(result.usage.cache_read_input_tokens, Some(40));
+	}
+
+	#[test]
+	fn translate_with_thinking_emulation() {
+		let resp = ChatCompletionResponse {
+			id: "chatcmpl-999".to_string(),
+			object: "chat.completion".to_string(),
+			created: 1234567890,
+			model: "gpt-4".to_string(),
+			choices: vec![Choice {
+				index: 0,
+				message: ResponseMessage {
+					role: "assistant".to_string(),
+					content: Some(
+						"<thinking>Let me analyze this...</thinking>The answer is 42.".to_string(),
+					),
+					tool_calls: None,
+				},
+				finish_reason: Some("stop".to_string()),
+				logprobs: None,
+			}],
+			system_fingerprint: None,
+			usage: Some(Usage {
+				prompt_tokens: 20,
+				completion_tokens: 15,
+				total_tokens: 35,
+				prompt_tokens_details: None,
+			}),
+		};
+
+		let result = translate_response(&resp, true);
+		assert_eq!(result.content.len(), 2);
+		assert!(
+			matches!(&result.content[0], AssistantContentBlock::Thinking(t) if t.thinking == "Let me analyze this...")
+		);
+		assert!(
+			matches!(&result.content[1], AssistantContentBlock::Text(t) if t.text == "The answer is 42.")
+		);
 	}
 }
