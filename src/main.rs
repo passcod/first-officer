@@ -119,7 +119,11 @@ async fn main() {
 		.await
 		.expect("failed to bind");
 
-	info!(port, "first-officer listening");
+	info!(
+		port,
+		version = env!("CARGO_PKG_VERSION"),
+		"first-officer listening"
+	);
 
 	axum::serve(listener, app).await.expect("server error");
 }
