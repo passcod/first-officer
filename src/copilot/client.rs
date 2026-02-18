@@ -75,7 +75,7 @@ pub async fn chat_completions_raw(
 	body: &[u8],
 	vision: bool,
 	is_agent: bool,
-) -> Result<reqwest::Response, reqwest::Error> {
+) -> Result<reqwest::Response, anyhow::Error> {
 	let base = copilot_base_url(account_type);
 	debug!(
 		url = %format!("{base}/chat/completions"),
@@ -94,8 +94,21 @@ pub async fn chat_completions_raw(
 		.headers(headers)
 		.body(body.to_vec())
 		.send()
-		.await?
-		.error_for_status()?;
-	debug!(status = %resp.status(), "received chat completions response");
+		.await
+		.context("failed to send chat completions request")?;
+
+	let status = resp.status();
+	if !status.is_success() {
+		let error_body = resp.bytes().await.unwrap_or_default();
+		let error_text = String::from_utf8_lossy(&error_body);
+		tracing::error!(
+			status = %status,
+			body = %error_text,
+			"Copilot API returned error status"
+		);
+		anyhow::bail!("HTTP {status}: {error_text}");
+	}
+
+	debug!(status = %status, "received chat completions response");
 	Ok(resp)
 }

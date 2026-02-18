@@ -32,9 +32,10 @@ fn strip_date_suffix(name: &str) -> Option<String> {
 			// Basic validation: year should be reasonable (2020-2099)
 			if let Some(year_str) = potential_date.get(0..4)
 				&& let Ok(year) = year_str.parse::<u32>()
-					&& (2020..2100).contains(&year) {
-						return Some(parts[1].to_string());
-					}
+				&& (2020..2100).contains(&year)
+			{
+				return Some(parts[1].to_string());
+			}
 		}
 	}
 	None

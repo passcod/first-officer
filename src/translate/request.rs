@@ -48,7 +48,7 @@ pub fn translate_request(req: &MessagesRequest, emulate_thinking: bool) -> ChatC
 	};
 
 	ChatCompletionsRequest {
-		model: normalize_model_name(&req.model),
+		model: req.model.clone(),
 		messages,
 		max_tokens: Some(max_tokens),
 		temperature: req.temperature,
@@ -68,20 +68,6 @@ pub fn translate_request(req: &MessagesRequest, emulate_thinking: bool) -> ChatC
 		tool_choice: req.tool_choice.as_ref().and_then(translate_tool_choice),
 		user: req.metadata.as_ref().and_then(|m| m.user_id.clone()),
 	}
-}
-
-fn normalize_model_name(model: &str) -> String {
-	if let Some(rest) = model.strip_prefix("claude-sonnet-4-")
-		&& !rest.is_empty()
-	{
-		return "claude-sonnet-4".to_string();
-	}
-	if let Some(rest) = model.strip_prefix("claude-opus-4-")
-		&& !rest.is_empty()
-	{
-		return "claude-opus-4".to_string();
-	}
-	model.to_string()
 }
 
 fn translate_messages(
