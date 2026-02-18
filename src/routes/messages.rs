@@ -3,13 +3,14 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use futures::StreamExt;
 use futures::stream::Stream;
 use tracing::{debug, error};
 
+use crate::auth::resolve::resolve_copilot_token;
 use crate::copilot::client::chat_completions_raw;
 use crate::copilot::types::ChatCompletionChunk;
 use crate::state::AppState;
@@ -20,8 +21,14 @@ use crate::translate::types::{MessagesRequest, StreamState};
 
 pub async fn post_messages(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(mut req): Json<MessagesRequest>,
 ) -> Response {
+    let copilot_token = match resolve_copilot_token(&state, &headers).await {
+        Ok(t) => t,
+        Err(resp) => return resp,
+    };
+
     let display_model = req.model.clone();
     req.model = state.renamer.resolve(&req.model);
 
@@ -38,10 +45,9 @@ pub async fn post_messages(
         }
     };
 
-    let token = state.copilot_token.read().await.clone();
     let upstream = match chat_completions_raw(
         &state.client,
-        &token,
+        &copilot_token,
         &state.account_type,
         &state.vscode_version,
         &body,

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use axum::Router;
 use axum::routing::{get, post};
 use tower_http::cors::CorsLayer;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 mod auth;
 mod copilot;
@@ -29,7 +29,11 @@ async fn main() {
         )
         .init();
 
-    let github_token = env::var("GH_TOKEN").expect("GH_TOKEN environment variable is required");
+    let github_token = env::var("GH_TOKEN").ok();
+    if github_token.is_none() {
+        warn!("GH_TOKEN not set — requests must provide a GitHub token via headers");
+    }
+
     let port: u16 = env::var("PORT")
         .ok()
         .and_then(|p| p.parse().ok())
@@ -46,27 +50,47 @@ async fn main() {
         renamer,
     ));
 
-    if let Err(e) = initial_token_exchange(&state).await {
-        error!(error = %e, "failed to acquire initial copilot token");
-        std::process::exit(1);
-    }
+    if state.default_github_token.is_some() {
+        if let Err(e) = initial_token_exchange(&state).await {
+            error!(error = %e, "failed to acquire initial copilot token");
+            std::process::exit(1);
+        }
 
-    match fetch_models(&state).await {
-        Ok(mut models) => {
-            for model in &mut models.data {
-                let renamed = state.renamer.rename(&model.id);
-                state.renamer.register(&model.id, &renamed);
-                if renamed != model.id {
-                    info!(from = %model.id, to = %renamed, "renamed model");
-                    model.id = renamed;
+        let copilot_token = state
+            .token_cache
+            .get_copilot_token(
+                state.default_github_token.as_deref().unwrap(),
+                &state.client,
+                &state.vscode_version,
+            )
+            .await;
+
+        if let Ok(token) = copilot_token {
+            match fetch_models(
+                &state.client,
+                &token,
+                &state.account_type,
+                &state.vscode_version,
+            )
+            .await
+            {
+                Ok(mut models) => {
+                    for model in &mut models.data {
+                        let renamed = state.renamer.rename(&model.id);
+                        state.renamer.register(&model.id, &renamed);
+                        if renamed != model.id {
+                            info!(from = %model.id, to = %renamed, "renamed model");
+                            model.id = renamed;
+                        }
+                    }
+                    let names: Vec<&str> = models.data.iter().map(|m| m.id.as_str()).collect();
+                    info!(count = models.data.len(), models = ?names, "cached models");
+                    *state.models.write().await = Some(models);
+                }
+                Err(e) => {
+                    error!(error = %e, "failed to fetch models (continuing without cache)");
                 }
             }
-            let names: Vec<&str> = models.data.iter().map(|m| m.id.as_str()).collect();
-            info!(count = models.data.len(), models = ?names, "cached models");
-            *state.models.write().await = Some(models);
-        }
-        Err(e) => {
-            error!(error = %e, "failed to fetch models (continuing without cache)");
         }
     }
 

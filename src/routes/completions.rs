@@ -7,22 +7,28 @@ use axum::response::{IntoResponse, Response};
 use futures::StreamExt;
 use tracing::error;
 
+use crate::auth::resolve::resolve_copilot_token;
 use crate::copilot::client::chat_completions_raw;
 use crate::copilot::types::ChatCompletionsRequest;
 use crate::state::AppState;
 
 pub async fn post_completions(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
+    let copilot_token = match resolve_copilot_token(&state, &headers).await {
+        Ok(t) => t,
+        Err(resp) => return resp,
+    };
+
     let body = resolve_model_name(&state, &body);
     let vision = detect_vision(&body);
     let is_agent = detect_agent(&body);
 
-    let token = state.copilot_token.read().await.clone();
     let resp = chat_completions_raw(
         &state.client,
-        &token,
+        &copilot_token,
         &state.account_type,
         &state.vscode_version,
         &body,
